@@ -822,27 +822,312 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
   
   // Control flow expressions (placeholder implementations)
   private def parseIfExpression(): ParseResult[Expression] = {
-    createParseError(ERROR_EXPECTED_EXPRESSION, "If expression parsing not implemented yet")
+    val ifToken = advance()  // consume 'if'
+    
+    // Parse condition
+    val conditionResult = parseExpression()
+    if (conditionResult.isError()) return createParseError(conditionResult.error, conditionResult.errorMessage)
+    
+    // Optional 'then'
+    matchToken(TokenType.TOKEN_THEN)
+    
+    // Parse then branch (either expression or indented block)
+    val thenResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                           tokens.length > current + 1 && 
+                           tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+      parseBlockExpression()
+    } else {
+      parseExpression()
+    }
+    if (thenResult.isError()) return createParseError(thenResult.error, thenResult.errorMessage)
+    
+    val elifBranches = ArrayBuffer[ElifBranch]()
+    var elseBranch: Expression = null
+    var hasEndMarker = false
+    
+    // Parse elif branches
+    while (matchToken(TokenType.TOKEN_ELIF)) {
+      val elifConditionResult = parseExpression()
+      if (elifConditionResult.isError()) return createParseError(elifConditionResult.error, elifConditionResult.errorMessage)
+      
+      matchToken(TokenType.TOKEN_THEN)  // optional 'then'
+      
+      val elifBodyResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                                 tokens.length > current + 1 && 
+                                 tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+        parseBlockExpression()
+      } else {
+        parseExpression()
+      }
+      if (elifBodyResult.isError()) return createParseError(elifBodyResult.error, elifBodyResult.errorMessage)
+      
+      elifBranches += ElifBranch(elifConditionResult.result, elifBodyResult.result, elifConditionResult.result.location)
+    }
+    
+    // Parse else branch
+    if (matchToken(TokenType.TOKEN_ELSE)) {
+      val elseResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                            tokens.length > current + 1 && 
+                            tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+        parseBlockExpression()
+      } else {
+        parseExpression()
+      }
+      if (elseResult.isError()) return createParseError(elseResult.error, elseResult.errorMessage)
+      elseBranch = elseResult.result
+    }
+    
+    // Check for end marker
+    if (matchToken(TokenType.TOKEN_END)) {
+      if (matchToken(TokenType.TOKEN_IF)) {
+        hasEndMarker = true
+      } else {
+        // Put back the 'end' token if not followed by 'if'
+        current -= 1
+      }
+    }
+    
+    ParseResult(IfExpression(conditionResult.result, thenResult.result, elifBranches, elseBranch, hasEndMarker, ifToken.location), ERROR_NONE)
   }
   
   private def parseWhileExpression(): ParseResult[Expression] = {
-    createParseError(ERROR_EXPECTED_EXPRESSION, "While expression parsing not implemented yet")
+    val whileToken = advance()  // consume 'while'
+    
+    // Parse condition
+    val conditionResult = parseExpression()
+    if (conditionResult.isError()) return createParseError(conditionResult.error, conditionResult.errorMessage)
+    
+    // Optional 'do'
+    matchToken(TokenType.TOKEN_DO)
+    
+    // Parse body (either expression or indented block)
+    val bodyResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                          tokens.length > current + 1 && 
+                          tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+      parseBlockExpression()
+    } else {
+      parseExpression()
+    }
+    if (bodyResult.isError()) return createParseError(bodyResult.error, bodyResult.errorMessage)
+    
+    // Check for end marker
+    var hasEndMarker = false
+    if (matchToken(TokenType.TOKEN_END)) {
+      if (matchToken(TokenType.TOKEN_WHILE)) {
+        hasEndMarker = true
+      } else {
+        // Put back the 'end' token if not followed by 'while'
+        current -= 1
+      }
+    }
+    
+    ParseResult(WhileExpression(conditionResult.result, bodyResult.result, hasEndMarker, whileToken.location), ERROR_NONE)
   }
   
   private def parseDoWhileExpression(): ParseResult[Expression] = {
-    createParseError(ERROR_EXPECTED_EXPRESSION, "Do-while expression parsing not implemented yet")
+    val doToken = advance()  // consume 'do'
+    
+    // Parse body
+    val bodyResult = parseExpression()
+    if (bodyResult.isError()) return createParseError(bodyResult.error, bodyResult.errorMessage)
+    
+    // Expect 'while'
+    val whileResult = consume(TokenType.TOKEN_WHILE, "'while'")
+    if (whileResult.isError()) return createParseError(whileResult.error, whileResult.errorMessage)
+    
+    // Parse condition
+    val conditionResult = parseExpression()
+    if (conditionResult.isError()) return createParseError(conditionResult.error, conditionResult.errorMessage)
+    
+    ParseResult(DoWhileExpression(bodyResult.result, conditionResult.result, doToken.location), ERROR_NONE)
   }
   
   private def parseForExpression(): ParseResult[Expression] = {
-    createParseError(ERROR_EXPECTED_EXPRESSION, "For expression parsing not implemented yet")
+    val forToken = advance()  // consume 'for'
+    
+    // Parse init (can be var declaration or expression, or empty)
+    var init: ASTNode = null
+    if (!check(TokenType.TOKEN_SEMICOLON)) {
+      if (check(TokenType.TOKEN_VAR)) {
+        val initResult = parseVarDeclaration()
+        if (initResult.isError()) return createParseError(initResult.error, initResult.errorMessage)
+        init = initResult.result
+      } else {
+        val initResult = parseExpression()
+        if (initResult.isError()) return createParseError(initResult.error, initResult.errorMessage)
+        init = ExpressionStatement(initResult.result, initResult.result.location)
+      }
+    }
+    
+    // Expect semicolon
+    val semicolon1Result = consume(TokenType.TOKEN_SEMICOLON, "';'")
+    if (semicolon1Result.isError()) return createParseError(semicolon1Result.error, semicolon1Result.errorMessage)
+    
+    // Parse condition (optional)
+    var condition: Expression = null
+    if (!check(TokenType.TOKEN_SEMICOLON)) {
+      val conditionResult = parseExpression()
+      if (conditionResult.isError()) return createParseError(conditionResult.error, conditionResult.errorMessage)
+      condition = conditionResult.result
+    }
+    
+    // Expect semicolon
+    val semicolon2Result = consume(TokenType.TOKEN_SEMICOLON, "';'")
+    if (semicolon2Result.isError()) return createParseError(semicolon2Result.error, semicolon2Result.errorMessage)
+    
+    // Parse update (optional)
+    var update: Expression = null
+    if (!check(TokenType.TOKEN_DO) && !check(TokenType.TOKEN_NEWLINE)) {
+      val updateResult = parseExpression()
+      if (updateResult.isError()) return createParseError(updateResult.error, updateResult.errorMessage)
+      update = updateResult.result
+    }
+    
+    // Optional 'do'
+    matchToken(TokenType.TOKEN_DO)
+    
+    // Parse body (either expression or indented block)
+    val bodyResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                          tokens.length > current + 1 && 
+                          tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+      parseBlockExpression()
+    } else {
+      parseExpression()
+    }
+    if (bodyResult.isError()) return createParseError(bodyResult.error, bodyResult.errorMessage)
+    
+    // Check for end marker
+    var hasEndMarker = false
+    if (matchToken(TokenType.TOKEN_END)) {
+      if (matchToken(TokenType.TOKEN_FOR)) {
+        hasEndMarker = true
+      } else {
+        // Put back the 'end' token if not followed by 'for'
+        current -= 1
+      }
+    }
+    
+    ParseResult(ForExpression(init, condition, update, bodyResult.result, hasEndMarker, forToken.location), ERROR_NONE)
   }
   
   private def parseLoopExpression(): ParseResult[Expression] = {
-    createParseError(ERROR_EXPECTED_EXPRESSION, "Loop expression parsing not implemented yet")
+    val loopToken = advance()  // consume 'loop'
+    
+    // Parse body (either expression or indented block)
+    val bodyResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                          tokens.length > current + 1 && 
+                          tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+      parseBlockExpression()
+    } else {
+      parseExpression()
+    }
+    if (bodyResult.isError()) return createParseError(bodyResult.error, bodyResult.errorMessage)
+    
+    // Check for end marker
+    var hasEndMarker = false
+    if (matchToken(TokenType.TOKEN_END)) {
+      if (matchToken(TokenType.TOKEN_LOOP)) {
+        hasEndMarker = true
+      } else {
+        // Put back the 'end' token if not followed by 'loop'
+        current -= 1
+      }
+    }
+    
+    ParseResult(LoopExpression(bodyResult.result, hasEndMarker, loopToken.location), ERROR_NONE)
   }
   
   private def parseMatchExpression(): ParseResult[Expression] = {
-    createParseError(ERROR_EXPECTED_EXPRESSION, "Match expression parsing not implemented yet")
+    val matchToken = advance()  // consume 'match'
+    
+    // Parse value to match against
+    val valueResult = parseExpression()
+    if (valueResult.isError()) return createParseError(valueResult.error, valueResult.errorMessage)
+    
+    // Expect newline and indent for match block
+    val newlineResult = consume(TokenType.TOKEN_NEWLINE, "newline after match expression")
+    if (newlineResult.isError()) return createParseError(newlineResult.error, newlineResult.errorMessage)
+    
+    val indentResult = consume(TokenType.TOKEN_INDENT, "indentation for match block")
+    if (indentResult.isError()) return createParseError(indentResult.error, indentResult.errorMessage)
+    
+    val cases = ArrayBuffer[MatchCase]()
+    var defaultCase: Expression = null
+    
+    // Parse match cases
+    while (!check(TokenType.TOKEN_DEDENT) && !isAtEnd()) {
+      if (check(TokenType.TOKEN_CASE)) {
+        advance()  // consume 'case'
+        // Parse case pattern
+        val patternResult = parseExpression()
+        if (patternResult.isError()) return createParseError(patternResult.error, patternResult.errorMessage)
+        
+        // Optional 'do'
+        val hasDo = check(TokenType.TOKEN_DO)
+        if (hasDo) advance()
+        
+        // Parse case body
+        val bodyResult = if (!hasDo && (check(TokenType.TOKEN_NEWLINE) || 
+                                      check(TokenType.TOKEN_DEDENT) ||
+                                      check(TokenType.TOKEN_CASE) ||
+                                      check(TokenType.TOKEN_DEFAULT))) {
+          // Single expression on same line without 'do'
+          patternResult  // Use the pattern as the body (for simple cases like "case 1 -> ...")
+        } else if (hasDo && (check(TokenType.TOKEN_NEWLINE) && 
+                             tokens.length > current + 1 && 
+                             tokens(current + 1).tokenType == TokenType.TOKEN_INDENT)) {
+          // Multi-line case with do and indent
+          parseBlockExpression()
+        } else {
+          // Single expression after 'do' or on same line
+          parseExpression()
+        }
+        if (bodyResult.isError()) return createParseError(bodyResult.error, bodyResult.errorMessage)
+        
+        cases += MatchCase(patternResult.result, bodyResult.result, patternResult.result.location)
+        
+      } else if (check(TokenType.TOKEN_DEFAULT)) {
+        advance()  // consume 'default'
+        // Parse default case
+        val bodyResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                            tokens.length > current + 1 && 
+                            tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+          parseBlockExpression()
+        } else {
+          parseExpression()
+        }
+        if (bodyResult.isError()) return createParseError(bodyResult.error, bodyResult.errorMessage)
+        
+        defaultCase = bodyResult.result
+        
+      } else {
+        // Skip unknown tokens or newlines
+        if (check(TokenType.TOKEN_NEWLINE)) {
+          advance()  // consume newline
+        } else {
+          advance()  // Skip unexpected token
+        }
+      }
+    }
+    
+    // Consume DEDENT
+    val dedentResult = consume(TokenType.TOKEN_DEDENT, "dedent to close match block")
+    if (dedentResult.isError()) return createParseError(dedentResult.error, dedentResult.errorMessage)
+    
+    // Check for end marker
+    var hasEndMarker = false
+    if (check(TokenType.TOKEN_END)) {
+      advance()  // consume 'end'
+      if (check(TokenType.TOKEN_MATCH)) {
+        advance()  // consume 'match'
+        hasEndMarker = true
+      } else {
+        // Put back the 'end' token if not followed by 'match'
+        current -= 1
+      }
+    }
+    
+    ParseResult(MatchExpression(valueResult.result, cases, defaultCase, hasEndMarker, matchToken.location), ERROR_NONE)
   }
   
   private def parseBreakExpression(): ParseResult[Expression] = {

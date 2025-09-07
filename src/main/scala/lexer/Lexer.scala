@@ -190,8 +190,10 @@ class Lexer(sourceInput: String, fileName: String = "<unknown>") {
     if (isAtEnd()) {
       // Emit remaining dedents at EOF
       if (indentStack.length > 1) {
-        indentStack.remove(indentStack.length - 1)
+        // Set pending dedents to all levels except the base level (0)
         pendingDedents = indentStack.length - 1
+        indentStack.clear()
+        indentStack += 0  // Reset to base level
         if (pendingDedents > 0) {
           pendingDedents -= 1
           return makeToken(TokenType.TOKEN_DEDENT)
