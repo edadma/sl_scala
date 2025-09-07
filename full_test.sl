@@ -72,3 +72,12 @@ do
     print("at least once")
     x += 1
 while x < 15
+
+loop
+    if should_exit() then break
+    process()
+
+loop
+    if should_exit() then break
+    process()
+end loop

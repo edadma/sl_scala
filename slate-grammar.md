@@ -489,26 +489,7 @@ import math                         \ Namespace - imports as namespace object
 
 ## Type System
 
-Slate is dynamically typed with these built-in types:
-
-- **Number**: `int32`, `bigint`, `float`
-- **String**: UTF-8 encoded strings
-- **Boolean**: `true`, `false`
-- **Null**: `null`
-- **Undefined**: `undefined` 
-- **Array**: Dynamic arrays `[1, 2, 3]`
-- **Object**: Key-value maps `{key: value}`
-- **Function**: First-class functions
-- **Range**: Numeric ranges `1..10`, `1...10` (exclusive)
-- **Buffer**: Byte buffers for binary data
-- **Iterator**: Lazy iteration over collections
-
-### Type Coercion
-- Arithmetic operations promote int32 to float when needed
-- Integer overflow promotes int32 to bigint
-- Division always produces float: `5 / 2 → 2.5`
-- Floor division produces integer: `5 // 2 → 2`
-- String concatenation coerces operands to strings
+Slate is dynamically typed. See `slate-specification.md` for detailed type system documentation including value types, object model, memory management, and type coercion rules.
 
 ## Examples
 
