@@ -65,3 +65,10 @@ for var i = 0; i < 5; i += 1 do print(i)
 for var i = 0; i < 5; i += 1 do
     print(i)
 end for
+
+do print("once") while false
+
+do
+    print("at least once")
+    x += 1
+while x < 15

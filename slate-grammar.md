@@ -73,9 +73,11 @@ object_literal    ::= '{' (property (',' property)*)? '}'
 property          ::= identifier ':' expression
                     | string ':' expression
 template_literal  ::= '`' template_part* '`'
-template_part     ::= template_text
-                    | '$' identifier
-                    | '${' expression '}'
+template_part     ::= template_text             // raw text content
+                    | '$' identifier            // simple variable interpolation
+                    | '${' expression '}'       // expression interpolation
+template_text     ::= [^`$\\]*                 // text content (no backticks, dollars, or backslashes)
+                    | '\\' .                   // escaped characters
 ```
 
 ### Anonymous Functions
@@ -99,6 +101,7 @@ while_expression ::= 'while' expression 'do' expression
                    | 'while' expression indented_block ['end' 'while']
 
 do_while_expression ::= 'do' expression 'while' expression
+                      | 'do' indented_block 'while' expression
 
 for_expression ::= 'for' (var_decl | expression)? ';' expression? ';' expression?
                    ('do' expression | indented_block ['end' 'for'])
@@ -113,8 +116,7 @@ indented_match_block ::= NEWLINE INDENT
                         (default_arm)?
                         DEDENT
 
-match_arm      ::= 'case' pattern 'do' expression
-                 | 'case' pattern expression
+match_arm      ::= 'case' pattern '->' expression
 default_arm    ::= 'default' expression
 pattern        ::= expression
 ```
@@ -159,6 +161,19 @@ logical_or     ::= logical_and (('||' | 'or') logical_and)*
 null_coalesce  ::= logical_or ('??' logical_or)*
 ```
 
+### Range Expressions
+```
+range_expr     ::= expression '..' expression               // inclusive range
+                 | expression '..<' expression              // exclusive range  
+                 | expression '..' expression 'step' expression    // with step
+                 | expression '..<' expression 'step' expression   // exclusive with step
+```
+
+### Ternary Conditional
+```
+ternary        ::= null_coalesce ('?' ternary ':' ternary)?
+```
+
 ### Assignment Expressions
 ```
 assignment     ::= ternary assignment_op assignment
@@ -168,16 +183,10 @@ assignment_op  ::= '=' | '+=' | '-=' | '*=' | '/=' | '//=' | '%=' | '**='
                  | '&&=' | '||=' | '??='
 ```
 
-### Ternary Conditional
-```
-ternary        ::= null_coalesce ('?' assignment ':' assignment)?
-```
-
 ### Expression Definition
 ```
 expression     ::= assignment
                  | anonymous_function
-                 | indented_block
 ```
 
 ## Statements
@@ -199,14 +208,13 @@ parameters     ::= identifier (',' identifier)*
 
 ### Import Statements
 ```
-import_stmt    ::= 'import' module_path '.' '_'                    // wildcard import
-                 | 'import' module_path '.' '{' import_list '}'    // selective import
-                 | 'import' module_path '.' identifier             // single item import
-                 | 'import' module_path                            // namespace import
+import_stmt    ::= 'import' module_path '._'                      // wildcard import
+                 | 'import' module_path '.{' import_list '}'      // selective import
+                 | 'import' module_path                           // simple import
 
 module_path    ::= identifier ('.' identifier)*
-import_list    ::= import_spec (',' import_spec)*
-import_spec    ::= identifier ('=>' identifier)?                   // with optional alias
+import_list    ::= import_item (',' import_item)*
+import_item    ::= identifier ('=>' identifier)?                  // with optional alias
 ```
 
 ### Package Statements
@@ -217,11 +225,15 @@ package_path   ::= identifier ('.' identifier)*
 
 ### Data Type Declarations
 ```
-data_decl      ::= ['private'] 'data' identifier ['(' parameters ')']
-                   (NEWLINE INDENT data_constructor* DEDENT)?
+data_decl      ::= ['private'] 'data' identifier
+                   (NEWLINE INDENT (data_constructor | method_decl)* DEDENT)?
                    ['end' identifier]
 
-data_constructor ::= 'case' identifier ['(' parameters ')']
+data_constructor ::= 'case' identifier                    // singleton constructor (case object)
+                   | 'case' identifier '(' parameters ')' // class constructor with parameters
+                   | 'case' identifier '(' ')'            // class constructor, empty parameters
+
+method_decl    ::= function_decl                          // methods inside data declarations
 ```
 
 ### Statement Types
@@ -286,8 +298,8 @@ loop
 end loop
 
 match value
-    case 1 do "one"
-    case 2 do "two"
+    case 1 -> "one"
+    case 2 -> "two"
     default "other"
 end match
 
@@ -299,14 +311,14 @@ def fibonacci(n) =
 end fibonacci
 
 \ Data declaration with end marker
-data BinaryTree(value)
+data BinaryTree
     case Leaf
     case Node(left, right)
         
     def size() =
         match this
-            case Leaf do 0
-            case Node(l, r) do 1 + l.size() + r.size()
+            case Leaf -> 0
+            case Node(l, r) -> 1 + l.size() + r.size()
 end BinaryTree
 ```
 
@@ -353,12 +365,6 @@ These are parsed as statements to allow them at the end of blocks (which are exp
 ### Block Expressions (Indented Blocks)
 
 **Indented blocks are first-class expressions** in Slate. They can appear anywhere an expression is expected and always return a value.
-
-#### Syntax
-```
-indented_block ::= NEWLINE INDENT block DEDENT
-block          ::= (statement | expression)*
-```
 
 #### Block Expression Semantics
 An indented block is created by:
@@ -439,21 +445,22 @@ import math                         \ Namespace - imports as namespace object
 ## Operator Precedence (highest to lowest)
 
 1. **Postfix**: `()` `.` `?.` `++` `--`
-2. **Unary**: `+` `-` `!` `~` `++` `--` (prefix)
+2. **Unary**: `+` `-` `!` `not` `~` `++` `--` (prefix)
 3. **Power**: `**` (right-associative)
-4. **Multiplicative**: `*` `/` `//` `%`
+4. **Multiplicative**: `*` `/` `//` `%` `mod`
 5. **Additive**: `+` `-`
 6. **Shift**: `<<` `>>` `>>>`
-7. **Bitwise AND**: `&`
-8. **Bitwise XOR**: `^`
-9. **Bitwise OR**: `|`
-10. **Relational**: `<` `<=` `>` `>=` `in` `instanceof`
-11. **Equality**: `==` `!=`
-12. **Logical AND**: `&&`
-13. **Logical OR**: `||`
-14. **Null Coalescing**: `??`
-15. **Assignment**: `=` `+=` `-=` `*=` `/=` `//=` `%=` `<<=` `>>=` `>>>=` `&=` `^=` `|=` `&&=` `||=` `??=`
+7. **Range**: `..` `..<` (with optional `step`)
+8. **Bitwise AND**: `&`
+9. **Bitwise XOR**: `^`
+10. **Bitwise OR**: `|`
+11. **Relational**: `<` `<=` `>` `>=` `in` `instanceof`
+12. **Equality**: `==` `!=`
+13. **Logical AND**: `&&` `and`
+14. **Logical OR**: `||` `or`
+15. **Null Coalescing**: `??`
 16. **Ternary Conditional**: `? :`
+17. **Assignment**: `=` `+=` `-=` `*=` `/=` `//=` `%=` `**=` `<<=` `>>=` `>>>=` `&=` `^=` `|=` `&&=` `||=` `??=`
 
 ## Built-in Functions
 
@@ -568,19 +575,19 @@ print(arr(2))       \ Prints: 3
 
 ### Match Expressions
 ```slate
-\ Match expressions support flexible case syntax
+\ Match expressions use '->' for cases
 var result = match value
-    case 0 do "zero"                    \ Single-line with 'do'
-    case 1                              \ Multi-line without 'do'
+    case 0 -> "zero"                    \ Single-line with '->'
+    case 1 ->                           \ Multi-line with '->'
         "one"
-    case x do                           \ Multi-line with 'do'
+    case x ->                           \ Multi-line with '->'
         if x > 10 then "big" else "small"
-    default "other"                     \ Default case (no 'do' needed)
+    default "other"                     \ Default case (no '->' needed)
 
 \ Variable binding in patterns
 match person
-    case john do print("Found John!")   \ Binds the value to 'john'
-    default print("Someone else")       \ Default case (no 'do' needed)
+    case john -> print("Found John!")   \ Binds the value to 'john'
+    default print("Someone else")       \ Default case (no '->' needed)
 ```
 
 This grammar specification accurately reflects Slate's expression-oriented design where control flow constructs are expressions that return values, while declarations and imports are statements.
