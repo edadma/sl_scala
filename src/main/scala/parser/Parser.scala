@@ -483,7 +483,6 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
     val token = peek()
     if (precedence.contains(token.lexeme) && precedence(token.lexeme) == 1) {  // Assignment operators
       val operator = advance()
-      
       val valueResult = parseAssignment()  // Right associative
       if (valueResult.isError()) return createParseError(valueResult.error, valueResult.errorMessage)
       
