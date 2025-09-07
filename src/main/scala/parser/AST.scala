@@ -254,17 +254,15 @@ case class FunctionDeclaration(
 
 // Import statements
 case class ImportStatement(
-  modulePath: ArrayBuffer[String],
-  importType: ImportType,
-  items: ArrayBuffer[ImportItem],  // empty for wildcard/namespace imports
+  path: ArrayBuffer[String],      // The full import path
+  importSpec: ImportSpec,          // What's being imported (wildcard, items, or nothing)
   location: SourceLocation
 ) extends Statement
 
-sealed trait ImportType
-case object WildcardImport extends ImportType      // import math._
-case object NamespaceImport extends ImportType     // import math
-case object SelectiveImport extends ImportType     // import math.{sin, cos}
-case object SingleImport extends ImportType        // import math.sin
+sealed trait ImportSpec
+case object WildcardSpec extends ImportSpec                              // ._
+case class SelectiveSpec(items: ArrayBuffer[ImportItem]) extends ImportSpec  // .{a, b}
+case object SimpleSpec extends ImportSpec                                // no suffix
 
 case class ImportItem(
   name: String,
@@ -281,7 +279,6 @@ case class PackageStatement(
 // Data type declarations
 case class DataDeclaration(
   name: String,
-  parameters: ArrayBuffer[String],  // constructor parameters
   constructors: ArrayBuffer[DataConstructor],
   methods: ArrayBuffer[FunctionDeclaration],  // methods inside data type
   isPrivate: Boolean,
@@ -292,6 +289,7 @@ case class DataDeclaration(
 case class DataConstructor(
   name: String,
   parameters: ArrayBuffer[String],
+  isSingleton: Boolean,  // true for case Name, false for case Name() or case Name(params)
   location: SourceLocation
 )
 

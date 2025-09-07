@@ -1,3 +1,5 @@
+package a.b.c
+
 \ Test Slate program for lexer
 var x = 42
 val message = "Hello, World!"
@@ -11,7 +13,7 @@ def greet(name) =
         print("Regular greeting")
 
 \ Control flow with indentation
-if x > 0
+if x > 0 then
     print("x is positive")
     while x > 0
         print(x)
@@ -19,11 +21,11 @@ if x > 0
     print("Done counting")
 
 \ Array and object literals
-var arr = [1, 2, 3, 4, 5]
+val arr = [1, 2, 3, 4, 5]
 var obj = {name: "Bob", age: 30}
 
 \ Range and operators
-for var i = 0; i < 10; i += 1
+for var i = 0; i < 10; i += 1 do
     print(i)
 
 \ Template literals
@@ -36,6 +38,6 @@ var notDef = undefined
 
 \ Match expression
 match x
-    case 0 do "zero"
-    case 1 do "one"
+    case 0 -> "zero"
+    case 1 -> "one"
     default "other"

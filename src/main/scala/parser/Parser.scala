@@ -213,7 +213,7 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
       val result = parsePackageStatement()
       return ParseResult(result.result.asInstanceOf[ASTNode], result.error, result.errorMessage, result.errorLocation)
     }
-    if (check(TokenType.TOKEN_DATA)) {
+    if (check(TokenType.TOKEN_DATA) || check(TokenType.TOKEN_PRIVATE)) {
       val result = parseDataDeclaration()
       return ParseResult(result.result.asInstanceOf[ASTNode], result.error, result.errorMessage, result.errorLocation)
     }
@@ -307,52 +307,64 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
   private def parseImportStatement(): ParseResult[ImportStatement] = {
     val importToken = advance()  // consume 'import'
     
-    val modulePath = ArrayBuffer[String]()
-    val moduleResult = consume(TokenType.TOKEN_IDENTIFIER, "module name")
-    if (moduleResult.isError()) return createParseError(moduleResult.error, moduleResult.errorMessage)
+    val path = ArrayBuffer[String]()
+    val pathResult = consume(TokenType.TOKEN_IDENTIFIER, "module name")
+    if (pathResult.isError()) return createParseError(pathResult.error, pathResult.errorMessage)
     
-    modulePath += moduleResult.result.lexeme
+    path += pathResult.result.lexeme
     
+    // Parse the rest of the path
     while (matchToken(TokenType.TOKEN_DOT)) {
       if (check(TokenType.TOKEN_IDENTIFIER)) {
-        modulePath += advance().lexeme
+        val ident = advance().lexeme
+        if (ident == "_") {
+          // Wildcard: import module._
+          return ParseResult(ImportStatement(path, WildcardSpec, importToken.location), ERROR_NONE)
+        } else {
+          path += ident
+        }
       } else if (check(TokenType.TOKEN_LEFT_BRACE)) {
-        // Selective import: import module.{item1, item2}
+        // Selective: import module.{item1, item2}
         advance()  // consume '{'
         val items = ArrayBuffer[ImportItem]()
         
-        var continue = true
-        while (continue) {
-          val itemResult = consume(TokenType.TOKEN_IDENTIFIER, "import item")
-          if (itemResult.isError()) return createParseError(itemResult.error, itemResult.errorMessage)
-          
-          val itemName = itemResult.result.lexeme
-          var alias: String = null
-          
-          if (matchToken(TokenType.TOKEN_FAT_ARROW)) {  // '=>'
-            val aliasResult = consume(TokenType.TOKEN_IDENTIFIER, "alias name")
-            if (aliasResult.isError()) return createParseError(aliasResult.error, aliasResult.errorMessage)
-            alias = aliasResult.result.lexeme
+        if (!check(TokenType.TOKEN_RIGHT_BRACE)) {
+          var continue = true
+          while (continue) {
+            val itemResult = consume(TokenType.TOKEN_IDENTIFIER, "import item")
+            if (itemResult.isError()) return createParseError(itemResult.error, itemResult.errorMessage)
+            
+            val itemName = itemResult.result.lexeme
+            var alias: String = null
+            
+            if (matchToken(TokenType.TOKEN_FAT_ARROW)) {  // '=>'
+              val aliasResult = consume(TokenType.TOKEN_IDENTIFIER, "alias name")
+              if (aliasResult.isError()) return createParseError(aliasResult.error, aliasResult.errorMessage)
+              alias = aliasResult.result.lexeme
+            }
+            
+            items += ImportItem(itemName, alias, itemResult.result.location)
+            continue = matchToken(TokenType.TOKEN_COMMA)
           }
-          
-          items += ImportItem(itemName, alias, itemResult.result.location)
-          continue = matchToken(TokenType.TOKEN_COMMA)
         }
         
         val rightBraceResult = consume(TokenType.TOKEN_RIGHT_BRACE, "'}'")
         if (rightBraceResult.isError()) return createParseError(rightBraceResult.error, rightBraceResult.errorMessage)
         
-        return ParseResult(ImportStatement(modulePath, SelectiveImport, items, importToken.location), ERROR_NONE)
+        return ParseResult(ImportStatement(path, SelectiveSpec(items), importToken.location), ERROR_NONE)
         
-      } else if (check(TokenType.TOKEN_STAR) || check(TokenType.TOKEN_IDENTIFIER) && peek().lexeme == "_") {
-        // Wildcard import: import module._
+      } else if (check(TokenType.TOKEN_STAR)) {
+        // Wildcard: import module.*
         advance()
-        return ParseResult(ImportStatement(modulePath, WildcardImport, ArrayBuffer(), importToken.location), ERROR_NONE)
+        return ParseResult(ImportStatement(path, WildcardSpec, importToken.location), ERROR_NONE)
+      } else {
+        // Error: expected identifier, '{', or '*' after '.'
+        return createParseError(ERROR_EXPECTED_IDENTIFIER, "Expected identifier, '{', or '*' after '.'")
       }
     }
     
-    // Namespace import: import module
-    ParseResult(ImportStatement(modulePath, NamespaceImport, ArrayBuffer(), importToken.location), ERROR_NONE)
+    // Simple import: just the path with no special suffix
+    ParseResult(ImportStatement(path, SimpleSpec, importToken.location), ERROR_NONE)
   }
   
   private def parsePackageStatement(): ParseResult[PackageStatement] = {
@@ -389,23 +401,6 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
     if (nameResult.isError()) return createParseError(nameResult.error, nameResult.errorMessage)
     
     val name = nameResult.result.lexeme
-    val parameters = ArrayBuffer[String]()
-    
-    if (matchToken(TokenType.TOKEN_LEFT_PAREN)) {
-      if (!check(TokenType.TOKEN_RIGHT_PAREN)) {
-        var continue = true
-        while (continue) {
-          val paramResult = consume(TokenType.TOKEN_IDENTIFIER, "parameter name")
-          if (paramResult.isError()) return createParseError(paramResult.error, paramResult.errorMessage)
-          parameters += paramResult.result.lexeme
-          continue = matchToken(TokenType.TOKEN_COMMA)
-        }
-      }
-      
-      val rightParenResult = consume(TokenType.TOKEN_RIGHT_PAREN, "')'")
-      if (rightParenResult.isError()) return createParseError(rightParenResult.error, rightParenResult.errorMessage)
-    }
-    
     val constructors = ArrayBuffer[DataConstructor]()
     val methods = ArrayBuffer[FunctionDeclaration]()
     
@@ -413,13 +408,18 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
     if (matchToken(TokenType.TOKEN_NEWLINE, TokenType.TOKEN_INDENT)) {
       while (!check(TokenType.TOKEN_DEDENT) && !isAtEnd()) {
         if (matchToken(TokenType.TOKEN_CASE)) {
+          // Constructor with 'case' keyword
           val ctorNameResult = consume(TokenType.TOKEN_IDENTIFIER, "constructor name")
           if (ctorNameResult.isError()) return createParseError(ctorNameResult.error, ctorNameResult.errorMessage)
           
           val ctorName = ctorNameResult.result.lexeme
           val ctorParams = ArrayBuffer[String]()
+          var isSingleton = true
           
           if (matchToken(TokenType.TOKEN_LEFT_PAREN)) {
+            // Has parentheses - either empty () or with parameters
+            isSingleton = false
+            
             if (!check(TokenType.TOKEN_RIGHT_PAREN)) {
               var continue = true
               while (continue) {
@@ -433,8 +433,9 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
             val rightParenResult = consume(TokenType.TOKEN_RIGHT_PAREN, "')'")
             if (rightParenResult.isError()) return createParseError(rightParenResult.error, rightParenResult.errorMessage)
           }
+          // If no parentheses, it's a singleton (isSingleton remains true)
           
-          constructors += DataConstructor(ctorName, ctorParams, ctorNameResult.result.location)
+          constructors += DataConstructor(ctorName, ctorParams, isSingleton, ctorNameResult.result.location)
           
         } else if (check(TokenType.TOKEN_DEF)) {
           val methodResult = parseFunctionDeclaration()
@@ -463,7 +464,7 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
       }
     }
     
-    ParseResult(DataDeclaration(name, parameters, constructors, methods, isPrivate, hasEndMarker, startLocation), ERROR_NONE)
+    ParseResult(DataDeclaration(name, constructors, methods, isPrivate, hasEndMarker, startLocation), ERROR_NONE)
   }
   
   // ============================================================================
@@ -1062,24 +1063,18 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
         val patternResult = parseExpression()
         if (patternResult.isError()) return createParseError(patternResult.error, patternResult.errorMessage)
         
-        // Optional 'do'
-        val hasDo = check(TokenType.TOKEN_DO)
-        if (hasDo) advance()
+        // Expect '->' arrow
+        val arrowResult = consume(TokenType.TOKEN_ARROW, "'->' after match case pattern")
+        if (arrowResult.isError()) return createParseError(arrowResult.error, arrowResult.errorMessage)
         
         // Parse case body
-        val bodyResult = if (!hasDo && (check(TokenType.TOKEN_NEWLINE) || 
-                                      check(TokenType.TOKEN_DEDENT) ||
-                                      check(TokenType.TOKEN_CASE) ||
-                                      check(TokenType.TOKEN_DEFAULT))) {
-          // Single expression on same line without 'do'
-          patternResult  // Use the pattern as the body (for simple cases like "case 1 -> ...")
-        } else if (hasDo && (check(TokenType.TOKEN_NEWLINE) && 
-                             tokens.length > current + 1 && 
-                             tokens(current + 1).tokenType == TokenType.TOKEN_INDENT)) {
-          // Multi-line case with do and indent
+        val bodyResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                            tokens.length > current + 1 && 
+                            tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+          // Multi-line case with indent
           parseBlockExpression()
         } else {
-          // Single expression after 'do' or on same line
+          // Single expression after '->'
           parseExpression()
         }
         if (bodyResult.isError()) return createParseError(bodyResult.error, bodyResult.errorMessage)
