@@ -223,13 +223,28 @@ match value
 
 ### Advanced Pattern Matching
 ```slate
-\ Type patterns with guards
+\ Alternative patterns
 match value
-    case x: Number if x > 0 -> "positive number"
-    case x: Number if x < 0 -> "negative number"
-    case x: Number -> "zero"
-    case s: String if s.length > 0 -> "non-empty string"
-    case s: String -> "empty string"
+    case "one"|"two"|"three" -> "small number word"
+    case "four"|"five"|"six" -> "medium number word"
+    case 1|2|3 -> "small number"
+    case 4|5|6 -> "medium number"
+    default "other value"
+
+\ Binding patterns
+match data
+    case x@(3|4|5) -> `Found number ${x} in range 3-5`
+    case name@("Alice"|"Bob"|"Charlie") -> `Hello, ${name}!`
+    case arr@[first, ...rest] -> `Array has first=${first}, rest length=${rest.length}`
+    case obj@{name, age} -> `Person with name=${name}, age=${age}`
+
+\ Type patterns with guards (using typeof operator)
+match value
+    case x if typeof x == "number" && x > 0 -> "positive number"
+    case x if typeof x == "number" && x < 0 -> "negative number"
+    case x if typeof x == "number" -> "zero"
+    case s if typeof s == "string" && s.length > 0 -> "non-empty string"
+    case s if typeof s == "string" -> "empty string"
     default "other type"
 
 \ Array destructuring

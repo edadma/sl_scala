@@ -126,6 +126,7 @@ enum TokenType {
   case TOKEN_QUESTION_DOT  // ?.
   case TOKEN_DOT_DOT       // ..
   case TOKEN_DOT_DOT_LESS  // ..<
+  case TOKEN_AT            // @
   
   // Template literals
   case TOKEN_TEMPLATE_START
@@ -253,6 +254,7 @@ enum TokenType {
     case TOKEN_QUESTION_DOT => "?."
     case TOKEN_DOT_DOT => ".."
     case TOKEN_DOT_DOT_LESS => "..<"
+    case TOKEN_AT => "@"
     
     case TOKEN_TEMPLATE_START => "`"
     case TOKEN_TEMPLATE_END => "`"

@@ -1150,8 +1150,65 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
   // ===== PATTERN PARSING =====
   
   private def parsePattern(): ParseResult[Pattern] = {
+    parseAlternativePattern()
+  }
+  
+  // Parse alternative patterns: pattern1 | pattern2 | pattern3
+  private def parseAlternativePattern(): ParseResult[Pattern] = {
+    val leftResult = parseBindingPattern()
+    if (leftResult.isError()) return leftResult
+    
+    if (check(TokenType.TOKEN_PIPE)) {
+      val alternatives = ArrayBuffer[Pattern]()
+      alternatives += leftResult.result
+      
+      while (matchToken(TokenType.TOKEN_PIPE)) {
+        val rightResult = parseBindingPattern()
+        if (rightResult.isError()) return createParseError(rightResult.error, rightResult.errorMessage)
+        alternatives += rightResult.result
+      }
+      
+      ParseResult(AlternativePattern(alternatives, leftResult.result.location), ERROR_NONE)
+    } else {
+      leftResult
+    }
+  }
+  
+  // Parse binding patterns: name@pattern
+  private def parseBindingPattern(): ParseResult[Pattern] = {
+    if (check(TokenType.TOKEN_IDENTIFIER)) {
+      val checkpoint = current
+      val identToken = advance()
+      
+      if (matchToken(TokenType.TOKEN_AT)) {
+        // This is a binding pattern: name@pattern
+        val patternResult = parsePrimaryPattern()
+        if (patternResult.isError()) return createParseError(patternResult.error, patternResult.errorMessage)
+        return ParseResult(BindingPattern(identToken.lexeme, patternResult.result, identToken.location), ERROR_NONE)
+      } else {
+        // Rewind and parse as primary pattern
+        current = checkpoint
+        parsePrimaryPattern()
+      }
+    } else {
+      parsePrimaryPattern()
+    }
+  }
+  
+  // Parse primary patterns (everything except alternatives and binding)
+  private def parsePrimaryPattern(): ParseResult[Pattern] = {
+    // Parenthesized patterns: (pattern)
+    if (check(TokenType.TOKEN_LEFT_PAREN)) {
+      advance()  // consume '('
+      val patternResult = parsePattern()
+      if (patternResult.isError()) return createParseError(patternResult.error, patternResult.errorMessage)
+      val rightParenResult = consume(TokenType.TOKEN_RIGHT_PAREN, "')'")
+      if (rightParenResult.isError()) return createParseError(rightParenResult.error, rightParenResult.errorMessage)
+      return patternResult
+    }
+    
     // Array destructuring pattern: [a, b, ...rest]
-    if (check(TokenType.TOKEN_LEFT_BRACKET)) {
+    else if (check(TokenType.TOKEN_LEFT_BRACKET)) {
       val result = parseArrayPattern()
       ParseResult(result.result.asInstanceOf[Pattern], result.error, result.errorMessage, result.errorLocation)
     }

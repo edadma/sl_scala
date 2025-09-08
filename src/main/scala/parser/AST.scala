@@ -281,6 +281,19 @@ case class GuardedPattern(
   location: SourceLocation
 ) extends Pattern
 
+// Alternative pattern (pattern1 | pattern2 | pattern3)
+case class AlternativePattern(
+  alternatives: ArrayBuffer[Pattern],
+  location: SourceLocation
+) extends Pattern
+
+// Binding pattern (name@pattern)
+case class BindingPattern(
+  name: String,
+  pattern: Pattern,
+  location: SourceLocation
+) extends Pattern
+
 // ============================================================================
 // STATEMENTS - do not return values
 // ============================================================================

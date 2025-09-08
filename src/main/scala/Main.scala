@@ -340,6 +340,14 @@ object Main {
         println(s"${prefix}ObjectPatternProperty(${p.key})")
         printAST(p.pattern, indent + 1)
         
+      case p: parser.AlternativePattern =>
+        println(s"${prefix}AlternativePattern(${p.alternatives.length} alternatives)")
+        p.alternatives.foreach(printAST(_, indent + 1))
+        
+      case p: parser.BindingPattern =>
+        println(s"${prefix}BindingPattern(${p.name})")
+        printAST(p.pattern, indent + 1)
+        
       case other =>
         println(s"${prefix}${other.getClass.getSimpleName}")
     }

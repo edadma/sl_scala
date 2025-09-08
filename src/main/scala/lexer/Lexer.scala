@@ -245,6 +245,7 @@ class Lexer(sourceInput: String, fileName: String = "<unknown>") {
       case ';' => makeToken(TokenType.TOKEN_SEMICOLON)
       case ':' => makeToken(TokenType.TOKEN_COLON)
       case '~' => makeToken(TokenType.TOKEN_TILDE)
+      case '@' => makeToken(TokenType.TOKEN_AT)
       case '?' =>
         if (matchChar('.')) makeToken(TokenType.TOKEN_QUESTION_DOT)
         else if (matchChar('?')) {

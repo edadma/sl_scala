@@ -118,13 +118,18 @@ indented_match_block ::= NEWLINE INDENT
 
 match_arm      ::= 'case' pattern guard? '->' expression
 default_arm    ::= 'default' expression
-pattern        ::= identifier                           // Simple binding (x)
+pattern        ::= alternative_pattern
+alternative_pattern ::= binding_pattern ('|' binding_pattern)*   // Alternative patterns (a|b|c)
+binding_pattern ::= identifier '@' primary_pattern               // Binding pattern (x@pattern)
+                 | primary_pattern
+primary_pattern ::= identifier                           // Simple binding (x)
                  | literal                             // Literal pattern (42, "hello", true, null)
                  | identifier ':' identifier          // Type pattern (x: Number)
                  | identifier '(' pattern_list ')'     // Constructor pattern (Node(l, r))
                  | '[' pattern_list ']'                // Array destructuring ([first, second])
                  | '[' pattern_list ',' '...' identifier ']'  // Array with rest (...rest)
                  | '{' object_pattern_list '}'         // Object destructuring ({name, age})
+                 | '(' pattern ')'                     // Parenthesized pattern
 guard          ::= 'if' expression                     // Pattern guard (if x > 5)
 pattern_list   ::= pattern (',' pattern)*
 object_pattern_list ::= object_pattern (',' object_pattern)*
