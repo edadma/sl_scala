@@ -229,10 +229,9 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
   private def parseVarDeclaration(): ParseResult[VarDeclaration] = {
     val varToken = advance()  // consume 'var'
     
-    val identResult = consume(TokenType.TOKEN_IDENTIFIER, "identifier")
-    if (identResult.isError()) return createParseError(identResult.error, identResult.errorMessage)
+    val patternResult = parsePattern()
+    if (patternResult.isError()) return createParseError(patternResult.error, patternResult.errorMessage)
     
-    val name = identResult.result.lexeme
     var initializer: Expression = null
     
     if (matchToken(TokenType.TOKEN_EQUAL)) {
@@ -241,16 +240,14 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
       initializer = initResult.result
     }
     
-    ParseResult(VarDeclaration(name, initializer, varToken.location), ERROR_NONE)
+    ParseResult(VarDeclaration(patternResult.result, initializer, varToken.location), ERROR_NONE)
   }
   
   private def parseValDeclaration(): ParseResult[ValDeclaration] = {
     val valToken = advance()  // consume 'val'
     
-    val identResult = consume(TokenType.TOKEN_IDENTIFIER, "identifier")
-    if (identResult.isError()) return createParseError(identResult.error, identResult.errorMessage)
-    
-    val name = identResult.result.lexeme
+    val patternResult = parsePattern()
+    if (patternResult.isError()) return createParseError(patternResult.error, patternResult.errorMessage)
     
     val equalsResult = consume(TokenType.TOKEN_EQUAL, "'='")
     if (equalsResult.isError()) return createParseError(equalsResult.error, equalsResult.errorMessage)
@@ -258,7 +255,7 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
     val initResult = parseExpression()
     if (initResult.isError()) return createParseError(initResult.error, initResult.errorMessage)
     
-    ParseResult(ValDeclaration(name, initResult.result, valToken.location), ERROR_NONE)
+    ParseResult(ValDeclaration(patternResult.result, initResult.result, valToken.location), ERROR_NONE)
   }
   
   private def parseFunctionDeclaration(): ParseResult[FunctionDeclaration] = {
@@ -1061,7 +1058,7 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
       if (check(TokenType.TOKEN_CASE)) {
         advance()  // consume 'case'
         // Parse case pattern
-        val patternResult = parseExpression()
+        val patternResult = parsePattern()
         if (patternResult.isError()) return createParseError(patternResult.error, patternResult.errorMessage)
         
         // Expect '->' arrow
@@ -1148,5 +1145,149 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
     }
     
     ParseResult(ReturnExpression(value, token.location), ERROR_NONE)
+  }
+  
+  // ===== PATTERN PARSING =====
+  
+  private def parsePattern(): ParseResult[Pattern] = {
+    // Array destructuring pattern: [a, b, ...rest]
+    if (check(TokenType.TOKEN_LEFT_BRACKET)) {
+      val result = parseArrayPattern()
+      ParseResult(result.result.asInstanceOf[Pattern], result.error, result.errorMessage, result.errorLocation)
+    }
+    
+    // Object destructuring pattern: {name, age}
+    else if (check(TokenType.TOKEN_LEFT_BRACE)) {
+      val result = parseObjectPattern()
+      ParseResult(result.result.asInstanceOf[Pattern], result.error, result.errorMessage, result.errorLocation)
+    }
+    
+    // Literal patterns: 0, 1, "hello", true, false, null, undefined
+    else if (check(TokenType.TOKEN_INTEGER) || check(TokenType.TOKEN_FLOAT) || check(TokenType.TOKEN_STRING) ||
+             check(TokenType.TOKEN_TRUE) || check(TokenType.TOKEN_FALSE) || check(TokenType.TOKEN_NULL) || check(TokenType.TOKEN_UNDEFINED)) {
+      val literalResult = parsePrimary()  // parsePrimary handles all literal types
+      if (literalResult.isError()) return createParseError(literalResult.error, literalResult.errorMessage)
+      ParseResult(LiteralPattern(literalResult.result, literalResult.result.location), ERROR_NONE)
+    }
+    
+    // Identifier pattern (could be simple binding or constructor pattern)
+    else if (check(TokenType.TOKEN_IDENTIFIER)) {
+      val token = advance()
+      
+      // Check if it's a constructor pattern: Name(patterns...)
+      if (check(TokenType.TOKEN_LEFT_PAREN)) {
+        advance()  // consume '('
+        
+        val args = ArrayBuffer[Pattern]()
+        
+        // Handle empty constructor: Name()
+        if (check(TokenType.TOKEN_RIGHT_PAREN)) {
+          advance()
+          return ParseResult(ConstructorPattern(token.lexeme, args, token.location), ERROR_NONE)
+        }
+        
+        // Parse argument patterns
+        while (!check(TokenType.TOKEN_RIGHT_PAREN) && !isAtEnd()) {
+          val argResult = parsePattern()
+          if (argResult.isError()) return createParseError(argResult.error, argResult.errorMessage)
+          args += argResult.result
+          
+          if (!check(TokenType.TOKEN_RIGHT_PAREN)) {
+            val commaResult = consume(TokenType.TOKEN_COMMA, "','")
+            if (commaResult.isError()) return createParseError(commaResult.error, commaResult.errorMessage)
+          }
+        }
+        
+        val rightParenResult = consume(TokenType.TOKEN_RIGHT_PAREN, "')'")
+        if (rightParenResult.isError()) return createParseError(rightParenResult.error, rightParenResult.errorMessage)
+        
+        ParseResult(ConstructorPattern(token.lexeme, args, token.location), ERROR_NONE)
+      } else {
+        // Simple identifier pattern
+        ParseResult(IdentifierPattern(token.lexeme, token.location), ERROR_NONE)
+      }
+    }
+    else {
+      createParseError(ERROR_UNEXPECTED_TOKEN, s"Expected pattern, got: ${peek().lexeme}")
+    }
+  }
+  
+  private def parseArrayPattern(): ParseResult[ArrayPattern] = {
+    val leftBracket = advance()  // consume '['
+    
+    val elements = ArrayBuffer[Pattern]()
+    var restPattern: String = null
+    
+    // Handle empty array pattern []
+    if (check(TokenType.TOKEN_RIGHT_BRACKET)) {
+      advance()
+      return ParseResult(ArrayPattern(elements, restPattern, leftBracket.location), ERROR_NONE)
+    }
+    
+    // Parse pattern elements
+    while (!check(TokenType.TOKEN_RIGHT_BRACKET) && !isAtEnd()) {
+      // Handle rest pattern: ...rest (note: we don't have TOKEN_DOT_DOT_DOT, so this needs to be implemented differently)
+      // For now, we'll handle simple patterns
+      
+      // Handle hole in pattern: [a, , c]
+      if (check(TokenType.TOKEN_COMMA)) {
+        // Add placeholder pattern for holes
+        elements += IdentifierPattern("_", peek().location)
+      } else {
+        val patternResult = parsePattern()
+        if (patternResult.isError()) return createParseError(patternResult.error, patternResult.errorMessage)
+        elements += patternResult.result
+      }
+      
+      if (!check(TokenType.TOKEN_RIGHT_BRACKET)) {
+        val commaResult = consume(TokenType.TOKEN_COMMA, "','")
+        if (commaResult.isError()) return createParseError(commaResult.error, commaResult.errorMessage)
+      }
+    }
+    
+    val rightBracketResult = consume(TokenType.TOKEN_RIGHT_BRACKET, "']'")
+    if (rightBracketResult.isError()) return createParseError(rightBracketResult.error, rightBracketResult.errorMessage)
+    
+    ParseResult(ArrayPattern(elements, restPattern, leftBracket.location), ERROR_NONE)
+  }
+  
+  private def parseObjectPattern(): ParseResult[ObjectPattern] = {
+    val leftBrace = advance()  // consume '{'
+    
+    val properties = ArrayBuffer[ObjectPatternProperty]()
+    
+    // Handle empty object pattern {}
+    if (check(TokenType.TOKEN_RIGHT_BRACE)) {
+      advance()
+      return ParseResult(ObjectPattern(properties, leftBrace.location), ERROR_NONE)
+    }
+    
+    // Parse property patterns
+    while (!check(TokenType.TOKEN_RIGHT_BRACE) && !isAtEnd()) {
+      val keyResult = consume(TokenType.TOKEN_IDENTIFIER, "property name")
+      if (keyResult.isError()) return createParseError(keyResult.error, keyResult.errorMessage)
+      
+      val key = keyResult.result.lexeme
+      var pattern: Pattern = IdentifierPattern(key, keyResult.result.location)  // Default: shorthand property
+      
+      // Check for explicit pattern: {x: pattern}
+      if (matchToken(TokenType.TOKEN_COLON)) {
+        val patternResult = parsePattern()
+        if (patternResult.isError()) return createParseError(patternResult.error, patternResult.errorMessage)
+        pattern = patternResult.result
+      }
+      
+      properties += ObjectPatternProperty(key, pattern, keyResult.result.location)
+      
+      if (!check(TokenType.TOKEN_RIGHT_BRACE)) {
+        val commaResult = consume(TokenType.TOKEN_COMMA, "','")
+        if (commaResult.isError()) return createParseError(commaResult.error, commaResult.errorMessage)
+      }
+    }
+    
+    val rightBraceResult = consume(TokenType.TOKEN_RIGHT_BRACE, "'}'")
+    if (rightBraceResult.isError()) return createParseError(rightBraceResult.error, rightBraceResult.errorMessage)
+    
+    ParseResult(ObjectPattern(properties, leftBrace.location), ERROR_NONE)
   }
 }

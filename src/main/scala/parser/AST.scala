@@ -207,7 +207,7 @@ case class MatchExpression(
 ) extends Expression
 
 case class MatchCase(
-  pattern: Expression,    // In Slate, patterns are expressions
+  pattern: Pattern,    // Now using proper pattern nodes
   body: Expression,
   location: SourceLocation
 )
@@ -223,6 +223,65 @@ case class ReturnExpression(
 ) extends Expression
 
 // ============================================================================
+// PATTERNS - for destructuring and match expressions
+// ============================================================================
+
+// Pattern nodes for destructuring and match expressions
+abstract class Pattern extends ASTNode
+
+// Simple identifier pattern (x)
+case class IdentifierPattern(
+  name: String,
+  location: SourceLocation
+) extends Pattern
+
+// Literal pattern (42, "hello", true, null)
+case class LiteralPattern(
+  value: Expression,  // Literal expression
+  location: SourceLocation
+) extends Pattern
+
+// Array destructuring pattern ([first, second], [head, ...tail])
+case class ArrayPattern(
+  elements: ArrayBuffer[Pattern],
+  restPattern: String,  // null if no rest pattern, otherwise name for rest elements
+  location: SourceLocation
+) extends Pattern
+
+// Object destructuring pattern ({name, age}, {x: coord})
+case class ObjectPattern(
+  properties: ArrayBuffer[ObjectPatternProperty],
+  location: SourceLocation
+) extends Pattern
+
+case class ObjectPatternProperty(
+  key: String,         // Property name
+  pattern: Pattern,    // Pattern for the value (can be identifier or nested)
+  location: SourceLocation
+)
+
+// Type pattern (x: Number)
+case class TypePattern(
+  name: String,
+  typeName: String,
+  location: SourceLocation
+) extends Pattern
+
+// Constructor pattern (Node(left, right))
+case class ConstructorPattern(
+  name: String,
+  args: ArrayBuffer[Pattern],
+  location: SourceLocation
+) extends Pattern
+
+// Guarded pattern (pattern if condition)
+case class GuardedPattern(
+  pattern: Pattern,
+  guard: Expression,
+  location: SourceLocation
+) extends Pattern
+
+// ============================================================================
 // STATEMENTS - do not return values
 // ============================================================================
 
@@ -232,13 +291,13 @@ abstract class Statement extends ASTNode {
 
 // Variable declarations
 case class VarDeclaration(
-  name: String,
+  pattern: Pattern,         // Now supports destructuring patterns
   initializer: Expression,  // null if no initializer
   location: SourceLocation
 ) extends Statement
 
 case class ValDeclaration(
-  name: String,
+  pattern: Pattern,         // Now supports destructuring patterns
   initializer: Expression,  // always present for val
   location: SourceLocation
 ) extends Statement

@@ -12,7 +12,7 @@ This document provides comprehensive examples of Slate language constructs and u
 
 ### Variable Declarations
 ```slate
-\ Variable declarations are statements - they don't return values
+\ Simple variable declarations are statements - they don't return values
 var mutable = 5          \ Mutable variable (can be reassigned)
 val constant = 10        \ Immutable variable (cannot be reassigned)
 
@@ -24,6 +24,20 @@ var text = "Hello, World!"
 var flag = true
 var empty = null
 var notSet = undefined
+
+\ Array destructuring
+var [first, second] = [1, 2]           \ first = 1, second = 2
+val [head, ...tail] = [1, 2, 3, 4]     \ head = 1, tail = [2, 3, 4]
+var [a, , c] = [1, 2, 3]               \ a = 1, c = 3 (skip middle)
+
+\ Object destructuring
+val {name, age} = person                \ Extract name and age properties
+var {x: coord, y: yCoord} = point       \ Rename during destructuring
+val {name} = user                       \ Extract just name property
+
+\ Nested destructuring
+var [first, {name, age}] = [42, {name: "Alice", age: 30}]
+val {user: {profile: {email}}} = data   \ Deep destructuring
 ```
 
 ### Function Declarations

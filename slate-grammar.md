@@ -208,8 +208,8 @@ Statements are language constructs that do not return values. They are used for 
 
 ### Variable Declarations
 ```
-var_decl       ::= 'var' identifier ('=' expression)?
-val_decl       ::= 'val' identifier '=' expression
+var_decl       ::= 'var' pattern ('=' expression)?
+val_decl       ::= 'val' pattern '=' expression
 ```
 
 ### Function Declarations

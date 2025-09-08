@@ -10,26 +10,48 @@ import scala.util.Using
 object Main {
   def main(args: Array[String]): Unit = {
     if (args.length == 0) {
-      println("Usage: slate <file.sl> or slate -tokens <file.sl> or slate -ast <file.sl>")
+      println("Usage:")
+      println("  slate <file.sl>          - Parse and show basic info")
+      println("  slate -tokens <file.sl>  - Show tokenization")
+      println("  slate -ast <file.sl>     - Show AST")
+      println("  slate -script '<code>'   - Parse code from command line")
       System.exit(1)
     }
     
-    val showTokens = args(0) == "-tokens"
-    val showAST = args(0) == "-ast"
-    val fileName = if ((showTokens || showAST) && args.length > 1) args(1) else args(0)
+    val showTokens = args.contains("-tokens")
+    val showAST = args.contains("-ast") 
+    val isScript = args.contains("-script")
     
-    val file = new File(fileName)
-    if (!file.exists()) {
-      println(s"Error: File '$fileName' not found")
-      System.exit(1)
+    val (source, sourceName) = if (isScript) {
+      // Find the script argument (the one after -script)
+      val scriptIndex = args.indexOf("-script")
+      if (scriptIndex >= 0 && scriptIndex + 1 < args.length) {
+        (args(scriptIndex + 1), "<script>")
+      } else {
+        println("Error: -script requires code argument")
+        System.exit(1)
+        ("", "")  // Never reached
+      }
+    } else {
+      // Find the filename (first non-flag argument)
+      val fileName = args.find(!_.startsWith("-")).getOrElse {
+        println("Error: No input file specified")
+        System.exit(1)
+        ""  // Never reached
+      }
+      val file = new File(fileName)
+      if (!file.exists()) {
+        println(s"Error: File '$fileName' not found")
+        System.exit(1)
+      }
+      (Using(Source.fromFile(file))(_.mkString).get, fileName)
     }
     
-    val source = Using(Source.fromFile(file))(_.mkString).get
-    val lexer = new Lexer(source, fileName)
+    val lexer = new Lexer(source, sourceName)
     
     if (showTokens) {
       // Show all tokens for debugging
-      println(s"=== Tokens for $fileName ===")
+      println(s"=== Tokens for $sourceName ===")
       val tokens = lexer.getAllTokens()
       var lineNum = 1
       tokens.foreach { token =>
@@ -48,8 +70,8 @@ object Main {
       }
     } else if (showAST) {
       // Show AST for debugging
-      println(s"=== AST for $fileName ===")
-      val parser = new Parser(lexer, fileName)
+      println(s"=== AST for $sourceName ===")
+      val parser = new Parser(lexer, sourceName)
       val result = parser.parseProgram()
       
       if (result.isSuccess()) {
@@ -65,7 +87,7 @@ object Main {
       println("=== End of AST ===")
     } else {
       // Parse the file and check for errors
-      val parser = new Parser(lexer, fileName)
+      val parser = new Parser(lexer, sourceName)
       val result = parser.parseProgram()
       
       if (lexer.hasErrors()) {
@@ -77,7 +99,7 @@ object Main {
         parser.getErrors().foreach(System.err.println)
         System.exit(1)
       } else if (result.isSuccess()) {
-        println(s"Successfully parsed $fileName")
+        println(s"Successfully parsed $sourceName")
         val program = result.result
         println(s"  ${program.statements.length} top-level statements")
       } else {
@@ -97,11 +119,13 @@ object Main {
         p.statements.foreach(printAST(_, indent + 1))
         
       case v: parser.VarDeclaration =>
-        println(s"${prefix}VarDeclaration(${v.name})")
+        println(s"${prefix}VarDeclaration")
+        printAST(v.pattern, indent + 1)
         if (v.initializer != null) printAST(v.initializer, indent + 1)
         
       case v: parser.ValDeclaration =>
-        println(s"${prefix}ValDeclaration(${v.name})")
+        println(s"${prefix}ValDeclaration")
+        printAST(v.pattern, indent + 1)
         printAST(v.initializer, indent + 1)
         
       case f: parser.FunctionDeclaration =>
@@ -291,6 +315,30 @@ object Main {
               printAST(te.expression, indent + 2)
           }
         }
+        
+      // Pattern nodes
+      case p: parser.IdentifierPattern =>
+        println(s"${prefix}IdentifierPattern(${p.name})")
+        
+      case p: parser.LiteralPattern =>
+        println(s"${prefix}LiteralPattern")
+        printAST(p.value, indent + 1)
+        
+      case p: parser.ConstructorPattern =>
+        println(s"${prefix}ConstructorPattern(${p.name}, ${p.args.length} args)")
+        p.args.foreach(printAST(_, indent + 1))
+        
+      case p: parser.ArrayPattern =>
+        println(s"${prefix}ArrayPattern(${p.elements.length} elements${if (p.restPattern != null) s", rest: ${p.restPattern}" else ""})")
+        p.elements.foreach(printAST(_, indent + 1))
+        
+      case p: parser.ObjectPattern =>
+        println(s"${prefix}ObjectPattern(${p.properties.length} properties)")
+        p.properties.foreach(printAST(_, indent + 1))
+        
+      case p: parser.ObjectPatternProperty =>
+        println(s"${prefix}ObjectPatternProperty(${p.key})")
+        printAST(p.pattern, indent + 1)
         
       case other =>
         println(s"${prefix}${other.getClass.getSimpleName}")
