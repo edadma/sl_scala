@@ -61,6 +61,7 @@ class Lexer(sourceInput: String, fileName: String = "<unknown>") {
     "mod" -> TokenType.TOKEN_MOD,
     "step" -> TokenType.TOKEN_STEP,
     "end" -> TokenType.TOKEN_END,
+    "typeof" -> TokenType.TOKEN_TYPEOF,
     "true" -> TokenType.TOKEN_TRUE,
     "false" -> TokenType.TOKEN_FALSE,
     "null" -> TokenType.TOKEN_NULL,

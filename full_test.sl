@@ -81,3 +81,14 @@ loop
     if should_exit() then break
     process()
 end loop
+
+\ Test typeof operator
+var y = 42
+print(typeof y)
+print(typeof "hello")
+print(typeof [1, 2, 3])
+print(typeof {key: "value"})
+
+\ Test with expressions
+print(typeof (x + y))
+print(typeof x > 5)

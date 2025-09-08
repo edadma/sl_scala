@@ -52,6 +52,7 @@ enum TokenType {
   case TOKEN_MOD
   case TOKEN_STEP
   case TOKEN_END
+  case TOKEN_TYPEOF
   
   // Operators
   case TOKEN_PLUS
@@ -185,6 +186,7 @@ enum TokenType {
     case TOKEN_MOD => "mod"
     case TOKEN_STEP => "step"
     case TOKEN_END => "end"
+    case TOKEN_TYPEOF => "typeof"
     
     case TOKEN_PLUS => "+"
     case TOKEN_MINUS => "-"

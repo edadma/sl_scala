@@ -34,7 +34,7 @@ keywords       ::= 'var' | 'val' | 'def' | 'if' | 'then' | 'elif' | 'else'
                  | 'while' | 'do' | 'for' | 'loop' | 'break' | 'continue'
                  | 'return' | 'import' | 'package' | 'private' | 'match' | 'case' | 'default' | 'data'
                  | 'true' | 'false' | 'null' | 'undefined' | 'NaN' | 'Infinity'
-                 | 'and' | 'or' | 'not' | 'in' | 'instanceof' | 'mod' | 'step' | 'end'
+                 | 'and' | 'or' | 'not' | 'in' | 'instanceof' | 'mod' | 'step' | 'end' | 'typeof'
 ```
 
 ## Expressions
@@ -116,9 +116,22 @@ indented_match_block ::= NEWLINE INDENT
                         (default_arm)?
                         DEDENT
 
-match_arm      ::= 'case' pattern '->' expression
+match_arm      ::= 'case' pattern guard? '->' expression
 default_arm    ::= 'default' expression
-pattern        ::= expression
+pattern        ::= identifier                           // Simple binding (x)
+                 | literal                             // Literal pattern (42, "hello", true, null)
+                 | identifier ':' identifier          // Type pattern (x: Number)
+                 | identifier '(' pattern_list ')'     // Constructor pattern (Node(l, r))
+                 | '[' pattern_list ']'                // Array destructuring ([first, second])
+                 | '[' pattern_list ',' '...' identifier ']'  // Array with rest (...rest)
+                 | '{' object_pattern_list '}'         // Object destructuring ({name, age})
+guard          ::= 'if' expression                     // Pattern guard (if x > 5)
+pattern_list   ::= pattern (',' pattern)*
+object_pattern_list ::= object_pattern (',' object_pattern)*
+object_pattern ::= identifier                          // Property shorthand ({name})
+                 | identifier ':' pattern             // Property with pattern ({x: coord})
+
+literal        ::= number | string | boolean | 'null' | 'undefined' | 'NaN' | 'Infinity'
 ```
 
 ### Special Expressions (parsed as statements but usable in expression contexts)
@@ -141,7 +154,7 @@ arguments      ::= expression (',' expression)*
 ```
 unary          ::= postfix
                  | unary_op unary
-unary_op       ::= '+' | '-' | '!' | 'not' | '~' | '++' | '--'
+unary_op       ::= '+' | '-' | '!' | 'not' | '~' | '++' | '--' | 'typeof'
 ```
 
 ### Binary Expressions (by precedence, highest to lowest)
@@ -260,192 +273,43 @@ program        ::= block
 
 ## End Markers
 
-Slate supports optional end markers for constructs that use indented blocks. End markers provide visual clarity and help with error checking, especially in large blocks.
-
-### End Marker Rules
-
-**End markers are only available when using indented blocks:**
-- Single-line forms (using `do`, `then`, or direct expressions) do not support end markers
-- Multi-line indented block forms support optional end markers
+Slate supports optional end markers for constructs that use indented blocks:
 
 **Supported end markers:**
 - **Control flow**: `end if`, `end while`, `end for`, `end loop`, `end match`
-- **Function declarations**: `end <function_name>` (where `<function_name>` is the actual function name)  
-- **Data declarations**: `end <DataTypeName>` (where `<DataTypeName>` is the actual data type name)
+- **Function declarations**: `end <function_name>`  
+- **Data declarations**: `end <DataTypeName>`
 
-### Examples
-
-```slate
-\ Control flow with end markers
-if condition
-    do_something()
-    result = compute()
-    result
-end if
-
-while condition
-    process_item()
-    update_condition()
-end while
-
-for var i = 0; i < 10; i += 1
-    print(i)
-end for
-
-loop
-    if should_exit() then break
-    process()
-end loop
-
-match value
-    case 1 -> "one"
-    case 2 -> "two"
-    default "other"
-end match
-
-\ Function with end marker
-def fibonacci(n) =
-    if n <= 1 then
-        return n
-    fibonacci(n-1) + fibonacci(n-2)
-end fibonacci
-
-\ Data declaration with end marker
-data BinaryTree
-    case Leaf
-    case Node(left, right)
-        
-    def size() =
-        match this
-            case Leaf -> 0
-            case Node(l, r) -> 1 + l.size() + r.size()
-end BinaryTree
-```
-
-**Note:** `do...while` loops are self-delimiting and do not support end markers since they end with the `while` keyword.
+**Rules:**
+- Only available with indented blocks (not single-line forms)
+- `do...while` loops don't support end markers (self-delimiting)
 
 ## Language Semantics
 
-### Expression Return Values
+### Expression vs Statement
+- **Expressions** return values: control flow, arithmetic, literals, function calls
+- **Statements** do not return values: declarations, imports, expression statements
 
-**Control Flow Expressions:**
-- **if expression**: Returns value of executed branch. If condition is false and no `else`, returns `undefined`
-- **while/do-while/for/loop expressions**: Return `undefined`
-- **match expression**: Returns value of matched case or default
-- **break/continue expressions**: Return `undefined` (but cause control flow change)
-- **return expression**: Returns the specified value (or `undefined` if no value given)
-
-**Other Expressions:**
-- **Assignment expressions**: Return the assigned value
-- **Arithmetic/logical expressions**: Return computed result
-- **Function calls**: Return function result
-- **Literals**: Return their literal value
-
-### Statement vs Expression Distinction
-
-**Statements** (do not return values):
-- Variable declarations (`var`, `val`)
-- Function declarations (`def`)  
-- Import statements (`import`)
-- Expression statements (expressions used as statements)
-
-**Expressions** (return values):
-- All control flow constructs (`if`, `while`, `for`, `loop`, `match`)
-- Assignments, arithmetic, function calls, literals
-- `break`, `continue`, `return` (parsed as statements but usable in expression contexts)
-
-### Special Handling of break/continue/return
-
-These are parsed as statements to allow them at the end of blocks (which are expressions), but they can appear in expression contexts. The parser/codegen handles them specially:
-
-- They can appear as the final element in a block expression
-- When used in expression context, they evaluate to `undefined` before causing control flow change
-- They require special codegen handling due to their dual nature
-
-### Block Expressions (Indented Blocks)
-
-**Indented blocks are first-class expressions** in Slate. They can appear anywhere an expression is expected and always return a value.
-
-#### Block Expression Semantics
-An indented block is created by:
-- A newline followed by increased indentation (INDENT)
-- A sequence of statements and/or expressions  
-- A dedent back to the previous indentation level (DEDENT)
-
-The **return value** of an indented block is:
+### Block Expression Semantics
+**Indented blocks are first-class expressions** that return:
 1. The value of the last expression in the block, OR
 2. `undefined` if the block ends with a statement, OR  
 3. `undefined` if the block is empty
 
-#### Usage as Expressions
-Since indented blocks are expressions, they can be used:
-- As the right-hand side of assignments (`var x = indented_block`)
-- As function arguments (`print(indented_block)`)
-- As operands in binary operations (`indented_block + 5`)
-- Anywhere else an expression is valid
-
-#### Examples
-```slate
-\ Assignment to variable
-val result = 
-    var x = 5      \ Statement - doesn't contribute to block value
-    x + 10         \ Expression - block evaluates to 15
-print(result)      \ Prints: 15
-
-\ As function argument
-print(
-    var temp = 100
-    temp / 2
-)                  \ Prints: 50
-
-\ In arithmetic operations
-val sum = 10 + 
-    var a = 5
-    var b = 3
-    a * b          \ Block evaluates to 15
-print(sum)         \ Prints: 25
-
-\ Nested blocks
-val nested =
-    val outer = 10
-    
-        val inner = 5
-        outer + inner     \ Inner block evaluates to 15
-print(nested)      \ Prints: 15
-```
-
-## Indentation and Scoping
-
-Slate uses significant whitespace (indentation) to define code blocks:
-
-- **INDENT**: Increase in indentation level starts a new block
-- **DEDENT**: Decrease in indentation level ends a block  
-- **NEWLINE**: Line breaks are significant for statement separation
-
-### Scope Rules
+### Scoping Rules
 - Function parameters create local scope
 - Variable declarations create local scope within current block
-- Loop variables (for loop initializers) create local scope for the loop body
 - Blocks create new local scopes
-- Variable shadowing is allowed (local variables can shadow outer scope variables)
+- Variable shadowing is allowed
 
 ### Module System
-- Each `.sl` file is a module
-- Modules execute in shared VM with namespace-based isolation
-- Import statements bring module symbols into current namespace
-
-**Import Forms:**
-```slate
-import math._                       \ Wildcard - imports all exports
-import math.{sin, cos => cosine}    \ Selective - imports specific items with optional aliases
-import math.sqrt                    \ Single item - imports just sqrt
-import math                         \ Namespace - imports as namespace object
-```
+- Each `.sl` file is a module with namespace-based isolation
+- **Import forms**: `import math._` (wildcard), `import math.{sin, cos}` (selective), `import math` (namespace)
 
 ## Operator Precedence (highest to lowest)
 
 1. **Postfix**: `()` `.` `?.` `++` `--`
-2. **Unary**: `+` `-` `!` `not` `~` `++` `--` (prefix)
+2. **Unary**: `+` `-` `!` `not` `~` `++` `--` `typeof` (prefix)
 3. **Power**: `**` (right-associative)
 4. **Multiplicative**: `*` `/` `//` `%` `mod`
 5. **Additive**: `+` `-`
@@ -462,113 +326,12 @@ import math                         \ Namespace - imports as namespace object
 16. **Ternary Conditional**: `? :`
 17. **Assignment**: `=` `+=` `-=` `*=` `/=` `//=` `%=` `**=` `<<=` `>>=` `>>>=` `&=` `^=` `|=` `&&=` `||=` `??=`
 
-## Built-in Functions
+## Related Documents
 
-### Type Functions
-- `type(value)` - Returns type of value as string
-- `abs(number)` - Absolute value
-- `sqrt(number)` - Square root
-- `floor(number)` - Floor function
-- `ceil(number)` - Ceiling function
+- **Built-in Functions**: See `slate-builtins.md` for all available built-in functions including math, I/O, type inspection, and collection factory functions.
+- **Type System**: See `slate-specification.md` for detailed type system documentation including value types, object model, memory management, and type coercion rules.
+- **Usage Examples**: See `slate-examples.md` for comprehensive examples of all Slate language constructs and usage patterns.
 
-### I/O Functions  
-- `print(...)` - Print values to stdout
-- `input(prompt?)` - Read line from stdin
+---
 
-### Collection Functions
-- `Array(...)` - Array constructor
-- `String(...)` - String constructor
-- `Buffer(...)` - Buffer constructor
-
-### Math Functions
-- `sin(x)`, `cos(x)`, `tan(x)` - Trigonometric functions
-- `asin(x)`, `acos(x)`, `atan(x)`, `atan2(y,x)` - Inverse trig functions
-- `exp(x)`, `ln(x)` - Exponential and natural logarithm
-- `min(a,b)`, `max(a,b)` - Minimum and maximum
-- `random()` - Random number 0-1
-
-## Type System
-
-Slate is dynamically typed. See `slate-specification.md` for detailed type system documentation including value types, object model, memory management, and type coercion rules.
-
-## Examples
-
-### Declarations (Statements)
-```slate
-\ Variable declarations are statements - they don't return values
-var mutable = 5          \ Mutable variable (can be reassigned)
-val constant = 10        \ Immutable variable (cannot be reassigned)
-
-\ Function declarations are statements - they don't return values
-def add(a, b) = a + b
-def complex(x) =
-    val temp = x * 2     \ Using val for immutable local variables
-    temp + 10
-```
-
-### Control Flow as Expressions
-```slate
-\ if expression returns value of executed branch
-var result = if x > 0 then "positive" else "non-positive"
-
-\ 'then' is optional with indented blocks
-var result2 = if x > 0
-    print("positive!")
-    "positive"
-else
-    "non-positive"
-
-\ if with no else returns undefined when condition is false
-var maybe = if false then "value"  \ maybe gets undefined
-
-\ while expression with 'do'
-var status = while condition do process_item()
-
-\ 'do' is optional with indented blocks
-while i < 10
-    print(i)
-    i = i + 1
-
-\ for loop - 'do' optional with indented block
-for var i = 0; i < 10; i += 1
-    print(i)
-```
-
-### Block Expressions
-```slate
-var computed = 
-    var a = 5
-    var b = 10
-    a * b + 2  \ Block returns 52
-
-var sideEffect =
-    print("Computing...")
-    computeValue()  \ Block returns whatever computeValue() returns
-```
-
-### Array Access
-```slate
-\ Array access uses parentheses (like Scala)
-var arr = [1, 2, 3]
-print(arr(0))       \ Prints: 1
-print(arr(2))       \ Prints: 3
-```
-
-### Match Expressions
-```slate
-\ Match expressions use '->' for cases
-var result = match value
-    case 0 -> "zero"                    \ Single-line with '->'
-    case 1 ->                           \ Multi-line with '->'
-        "one"
-    case x ->                           \ Multi-line with '->'
-        if x > 10 then "big" else "small"
-    default "other"                     \ Default case (no '->' needed)
-
-\ Variable binding in patterns
-match person
-    case john -> print("Found John!")   \ Binds the value to 'john'
-    default print("Someone else")       \ Default case (no '->' needed)
-```
-
-This grammar specification accurately reflects Slate's expression-oriented design where control flow constructs are expressions that return values, while declarations and imports are statements.
+This grammar specification defines Slate's expression-oriented syntax where control flow constructs are expressions that return values, while declarations and imports are statements.

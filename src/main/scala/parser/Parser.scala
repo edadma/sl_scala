@@ -103,13 +103,14 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
   }
   
   private def matchToken(tokenTypes: TokenType*): Boolean = {
-    tokenTypes.foreach { tokenType =>
+    tokenTypes.exists { tokenType =>
       if (check(tokenType)) {
         advance()
-        return true
+        true
+      } else {
+        false
       }
     }
-    false
   }
   
   private def consume(tokenType: TokenType, message: String): ParseResult[Token] = {
@@ -547,7 +548,7 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
   
   private def parseUnary(): ParseResult[Expression] = {
     if (matchToken(TokenType.TOKEN_MINUS, TokenType.TOKEN_PLUS, TokenType.TOKEN_BANG, TokenType.TOKEN_NOT, 
-              TokenType.TOKEN_TILDE, TokenType.TOKEN_PLUS_PLUS, TokenType.TOKEN_MINUS_MINUS)) {
+              TokenType.TOKEN_TILDE, TokenType.TOKEN_PLUS_PLUS, TokenType.TOKEN_MINUS_MINUS, TokenType.TOKEN_TYPEOF)) {
       val operator = previous()
       val operandResult = parseUnary()
       if (operandResult.isError()) return createParseError(operandResult.error, operandResult.errorMessage)
