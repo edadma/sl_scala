@@ -48,13 +48,15 @@ object ParserTest {
       // Check var declaration
       assert(program.statements(0).isInstanceOf[VarDeclaration])
       val varDecl = program.statements(0).asInstanceOf[VarDeclaration]
-      assert(varDecl.name == "x")
+      assert(varDecl.pattern.isInstanceOf[IdentifierPattern])
+      assert(varDecl.pattern.asInstanceOf[IdentifierPattern].name == "x")
       assert(varDecl.initializer.isInstanceOf[IntegerLiteral])
       
       // Check val declaration
       assert(program.statements(1).isInstanceOf[ValDeclaration])
       val valDecl = program.statements(1).asInstanceOf[ValDeclaration]
-      assert(valDecl.name == "y")
+      assert(valDecl.pattern.isInstanceOf[IdentifierPattern])
+      assert(valDecl.pattern.asInstanceOf[IdentifierPattern].name == "y")
       assert(valDecl.initializer.isInstanceOf[StringLiteral])
       
     } match {
@@ -312,8 +314,8 @@ object ParserTest {
       
       assert(program.statements(0).isInstanceOf[ImportStatement])
       val importStmt = program.statements(0).asInstanceOf[ImportStatement]
-      assert(importStmt.modulePath.length >= 1)
-      assert(importStmt.modulePath(0) == "math")
+      assert(importStmt.path.length >= 1)
+      assert(importStmt.path(0) == "math")
       
     } match {
       case true => passed += 1; println("✓ Import statements")
@@ -331,6 +333,49 @@ object ParserTest {
     } match {
       case true => passed += 1; println("✓ Error recovery")
       case false => failed += 1; println("✗ Error recovery")
+    }
+    
+    // Test 16: Multiline if-then-else
+    test("Multiline if-then-else") {
+      val parser = new Parser(new Lexer("if x > 5 then \"big\"\nelse \"small\""))
+      val result = parser.parseProgram()
+      assert(result.isSuccess())
+      val program = result.result
+      
+      val expr = program.statements(0).asInstanceOf[ExpressionStatement].expression
+      assert(expr.isInstanceOf[IfExpression])
+      
+      val ifExpr = expr.asInstanceOf[IfExpression]
+      assert(ifExpr.condition.isInstanceOf[BinaryExpression])
+      assert(ifExpr.thenBranch.isInstanceOf[StringLiteral])
+      assert(ifExpr.elseBranch != null)
+      assert(ifExpr.elseBranch.isInstanceOf[StringLiteral])
+      
+    } match {
+      case true => passed += 1; println("✓ Multiline if-then-else")
+      case false => failed += 1; println("✗ Multiline if-then-else")
+    }
+    
+    // Test 17: Multiline if-then-elif-else
+    test("Multiline if-then-elif-else") {
+      val parser = new Parser(new Lexer("if x > 10 then \"large\"\nelif x > 5 then \"medium\"\nelse \"small\""))
+      val result = parser.parseProgram()
+      assert(result.isSuccess())
+      val program = result.result
+      
+      val expr = program.statements(0).asInstanceOf[ExpressionStatement].expression
+      assert(expr.isInstanceOf[IfExpression])
+      
+      val ifExpr = expr.asInstanceOf[IfExpression]
+      assert(ifExpr.condition.isInstanceOf[BinaryExpression])
+      assert(ifExpr.thenBranch.isInstanceOf[StringLiteral])
+      assert(ifExpr.elifBranches.length == 1)
+      assert(ifExpr.elseBranch != null)
+      assert(ifExpr.elseBranch.isInstanceOf[StringLiteral])
+      
+    } match {
+      case true => passed += 1; println("✓ Multiline if-then-elif-else")
+      case false => failed += 1; println("✗ Multiline if-then-elif-else")
     }
     
     println(s"\nTest Results: $passed passed, $failed failed")

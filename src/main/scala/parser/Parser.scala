@@ -845,35 +845,62 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
     var hasEndMarker = false
     
     // Parse elif branches
-    while (matchToken(TokenType.TOKEN_ELIF)) {
-      val elifConditionResult = parseExpression()
-      if (elifConditionResult.isError()) return createParseError(elifConditionResult.error, elifConditionResult.errorMessage)
+    // Check for elif on the same line or next line
+    var continueElif = true
+    while (continueElif && ((check(TokenType.TOKEN_ELIF)) || 
+           (check(TokenType.TOKEN_NEWLINE) && 
+            tokens.length > current + 1 && 
+            tokens(current + 1).tokenType == TokenType.TOKEN_ELIF))) {
       
-      matchToken(TokenType.TOKEN_THEN)  // optional 'then'
-      
-      val elifBodyResult = if (check(TokenType.TOKEN_NEWLINE) && 
-                                 tokens.length > current + 1 && 
-                                 tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
-        parseBlockExpression()
-      } else {
-        parseExpression()
+      // Skip newline if present
+      if (check(TokenType.TOKEN_NEWLINE)) {
+        advance()
       }
-      if (elifBodyResult.isError()) return createParseError(elifBodyResult.error, elifBodyResult.errorMessage)
       
-      elifBranches += ElifBranch(elifConditionResult.result, elifBodyResult.result, elifConditionResult.result.location)
+      if (!matchToken(TokenType.TOKEN_ELIF)) {
+        continueElif = false
+      } else {
+        val elifConditionResult = parseExpression()
+        if (elifConditionResult.isError()) return createParseError(elifConditionResult.error, elifConditionResult.errorMessage)
+        
+        matchToken(TokenType.TOKEN_THEN)  // optional 'then'
+        
+        val elifBodyResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                                   tokens.length > current + 1 && 
+                                   tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+          parseBlockExpression()
+        } else {
+          parseExpression()
+        }
+        if (elifBodyResult.isError()) return createParseError(elifBodyResult.error, elifBodyResult.errorMessage)
+        
+        elifBranches += ElifBranch(elifConditionResult.result, elifBodyResult.result, elifConditionResult.result.location)
+      }
     }
     
     // Parse else branch
-    if (matchToken(TokenType.TOKEN_ELSE)) {
-      val elseResult = if (check(TokenType.TOKEN_NEWLINE) && 
-                            tokens.length > current + 1 && 
-                            tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
-        parseBlockExpression()
-      } else {
-        parseExpression()
+    // Check for else on the same line or next line
+    if (check(TokenType.TOKEN_ELSE) || 
+        (check(TokenType.TOKEN_NEWLINE) && 
+         tokens.length > current + 1 && 
+         tokens(current + 1).tokenType == TokenType.TOKEN_ELSE)) {
+      
+      // Skip newline if present
+      if (check(TokenType.TOKEN_NEWLINE)) {
+        advance()
       }
-      if (elseResult.isError()) return createParseError(elseResult.error, elseResult.errorMessage)
-      elseBranch = elseResult.result
+      
+      if (matchToken(TokenType.TOKEN_ELSE)) {
+        val elseResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                              tokens.length > current + 1 && 
+                              tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+          parseBlockExpression()
+        } else {
+          parseExpression()
+        }
+        if (elseResult.isError()) return createParseError(elseResult.error, elseResult.errorMessage)
+        elseBranch = elseResult.result
+      }
     }
     
     // Check for end marker

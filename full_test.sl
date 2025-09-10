@@ -43,6 +43,15 @@ else
     "medium"
 end if
 
+\ New multiline format tests
+if x > 6 then "big"
+else "small"
+
+if x > 10 then "large"
+elif x > 5 then "medium"
+elif x > 0 then "small"
+else "zero or negative"
+
 val result = match x
     case 0 -> "zero"
     case 1 -> "one"

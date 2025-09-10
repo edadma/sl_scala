@@ -111,6 +111,11 @@ print(company.location.street)  \ Prints: "123 Main St"
 \ Simple if expression
 var result = if x > 0 then "positive" else "non-positive"
 
+\ Multiline if-then-else (new format)
+var sign = if x > 0 then "positive"
+else if x < 0 then "negative"
+else "zero"
+
 \ If expression with indented blocks
 var result2 = if x > 0
     print("positive!")
@@ -125,6 +130,13 @@ elif x > 5
     "medium"
 else
     "small"
+
+\ Multiline if-then with elif (single-line bodies)
+var grade = if score >= 90 then "A"
+elif score >= 80 then "B"
+elif score >= 70 then "C"
+elif score >= 60 then "D"
+else "F"
 
 \ If expression with end marker
 var status = if condition

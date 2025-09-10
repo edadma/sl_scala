@@ -92,10 +92,10 @@ anonymous_function ::= identifier '->' expression                  // single par
 if_expression  ::= 'if' expression 'then' expression elif_part* else_part?
                  | 'if' expression ['then'] indented_block elif_part* else_part? ['end' 'if']
 
-elif_part      ::= 'elif' expression 'then' expression
-                 | 'elif' expression ['then'] indented_block
+elif_part      ::= [NEWLINE] 'elif' expression 'then' expression
+                 | [NEWLINE] 'elif' expression ['then'] indented_block
 
-else_part      ::= 'else' expression
+else_part      ::= [NEWLINE] 'else' expression
 
 while_expression ::= 'while' expression 'do' expression
                    | 'while' expression indented_block ['end' 'while']
