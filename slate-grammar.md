@@ -55,6 +55,7 @@ primary        ::= identifier
                  | object_literal
                  | indented_block
                  | anonymous_function
+                 | let_expression
                  | if_expression
                  | while_expression
                  | do_while_expression
@@ -85,6 +86,21 @@ template_text     ::= [^`$\\]*                 // text content (no backticks, do
 anonymous_function ::= identifier '->' expression                  // single parameter
                      | '(' ')' '->' expression                    // no parameters
                      | '(' parameters ')' '->' expression         // multiple parameters
+```
+
+### Let Expressions
+```
+let_expression ::= 'let' binding_list 'in' expression
+                 | 'let' binding_list 'in' indented_block 'end' 'let'
+                 | 'let' indented_binding_block 'in' expression
+                 | 'let' indented_binding_block 'in' indented_block 'end' 'let'
+
+binding_list ::= binding (',' binding)*
+binding ::= identifier '=' expression
+
+indented_binding_block ::= NEWLINE INDENT
+                          binding+
+                          DEDENT
 ```
 
 ### Control Flow Expressions

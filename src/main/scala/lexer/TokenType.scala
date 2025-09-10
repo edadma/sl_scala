@@ -26,6 +26,7 @@ enum TokenType {
   case TOKEN_VAR
   case TOKEN_VAL
   case TOKEN_DEF
+  case TOKEN_LET
   case TOKEN_IF
   case TOKEN_THEN
   case TOKEN_ELIF
@@ -161,6 +162,7 @@ enum TokenType {
     case TOKEN_VAR => "var"
     case TOKEN_VAL => "val"
     case TOKEN_DEF => "def"
+    case TOKEN_LET => "let"
     case TOKEN_IF => "if"
     case TOKEN_THEN => "then"
     case TOKEN_ELIF => "elif"

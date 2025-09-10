@@ -698,6 +698,7 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
     
     // Control flow expressions
     if (check(TokenType.TOKEN_IF)) return parseIfExpression()
+    if (check(TokenType.TOKEN_LET)) { advance(); return parseLetExpression() }
     if (check(TokenType.TOKEN_WHILE)) return parseWhileExpression()
     if (check(TokenType.TOKEN_DO)) return parseDoWhileExpression()  
     if (check(TokenType.TOKEN_FOR)) return parseForExpression()
@@ -1172,6 +1173,189 @@ class Parser(lexer: Lexer, fileName: String = "<unknown>") {
     }
     
     ParseResult(ReturnExpression(value, token.location), ERROR_NONE)
+  }
+  
+  private def parseLetExpression(): ParseResult[Expression] = {
+    val startLocation = previous().location
+    val bindings = ArrayBuffer[LetBinding]()
+    
+    // Check if we have an indented binding block (newline followed by indent)
+    if (check(TokenType.TOKEN_NEWLINE) && current + 1 < tokens.length && tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+      // Indented binding block style
+      advance() // consume newline
+      advance() // consume indent
+      
+      // Parse bindings until dedent
+      while (!check(TokenType.TOKEN_DEDENT) && !isAtEnd()) {
+        val bindingResult = parseLetBinding()
+        if (bindingResult.isError()) return createParseError(bindingResult.error, bindingResult.errorMessage)
+        bindings += bindingResult.result
+        
+        // Consume newline between bindings
+        if (check(TokenType.TOKEN_NEWLINE)) {
+          advance()
+        }
+      }
+      
+      val dedentResult = consume(TokenType.TOKEN_DEDENT, "dedent after let bindings")
+      if (dedentResult.isError()) return createParseError(dedentResult.error, dedentResult.errorMessage)
+      
+    } else {
+      // Comma-separated binding list style (inline)
+      var continue = true
+      while (continue) {
+        val bindingResult = parseLetBinding()
+        if (bindingResult.isError()) return createParseError(bindingResult.error, bindingResult.errorMessage)
+        bindings += bindingResult.result
+        continue = matchToken(TokenType.TOKEN_COMMA)
+      }
+    }
+    
+    // Consume 'in' keyword
+    val inResult = consume(TokenType.TOKEN_IN, "'in' after let bindings")
+    if (inResult.isError()) return createParseError(inResult.error, inResult.errorMessage)
+    
+    // Parse body
+    var hasEndMarker = false
+    val bodyResult = if (check(TokenType.TOKEN_NEWLINE) && 
+                          tokens.length > current + 1 && 
+                          tokens(current + 1).tokenType == TokenType.TOKEN_INDENT) {
+      // Indented body - let parseBlockExpression handle newline and indent
+      val blockResult = parseBlockExpression()
+      if (blockResult.isError()) return createParseError(blockResult.error, blockResult.errorMessage)
+      
+      // Check for optional 'end let'
+      if (matchToken(TokenType.TOKEN_END)) {
+        val letResult = consume(TokenType.TOKEN_LET, "'let' after 'end'")
+        if (letResult.isError()) return createParseError(letResult.error, letResult.errorMessage)
+        hasEndMarker = true
+      }
+      
+      blockResult
+    } else {
+      // Simple expression body
+      parseExpression()
+    }
+    
+    if (bodyResult.isError()) return createParseError(bodyResult.error, bodyResult.errorMessage)
+    
+    ParseResult(LetExpression(bindings, bodyResult.result, hasEndMarker, startLocation), ERROR_NONE)
+  }
+  
+  private def parseLetBinding(): ParseResult[LetBinding] = {
+    val nameResult = consume(TokenType.TOKEN_IDENTIFIER, "variable name")
+    if (nameResult.isError()) return createParseError(nameResult.error, nameResult.errorMessage)
+    
+    val equalResult = consume(TokenType.TOKEN_EQUAL, "'=' after variable name")
+    if (equalResult.isError()) return createParseError(equalResult.error, equalResult.errorMessage)
+    
+    // Parse expression but stop at 'in' token (let binding context)
+    val valueResult = parseExpressionStopAt(TokenType.TOKEN_IN)
+    if (valueResult.isError()) return createParseError(valueResult.error, valueResult.errorMessage)
+    
+    ParseResult(LetBinding(nameResult.result.lexeme, valueResult.result, nameResult.result.location), ERROR_NONE)
+  }
+  
+  // Parse expression but stop when encountering specific token
+  private def parseExpressionStopAt(stopToken: TokenType): ParseResult[Expression] = {
+    parseAssignmentStopAt(stopToken)
+  }
+  
+  private def parseAssignmentStopAt(stopToken: TokenType): ParseResult[Expression] = {
+    val exprResult = parseTernaryStopAt(stopToken)
+    if (exprResult.isError()) return exprResult
+    
+    var expr = exprResult.result
+    
+    val token = peek()
+    if (!check(stopToken) && precedence.contains(token.lexeme) && precedence(token.lexeme) == 1) {  // Assignment operators
+      val operator = advance()
+      val valueResult = parseAssignmentStopAt(stopToken)  // Right associative
+      if (valueResult.isError()) return createParseError(valueResult.error, valueResult.errorMessage)
+      
+      expr = AssignmentExpression(expr, operator.lexeme, valueResult.result, expr.location)
+    }
+    
+    ParseResult(expr, ERROR_NONE)
+  }
+  
+  private def parseTernaryStopAt(stopToken: TokenType): ParseResult[Expression] = {
+    // For now, just call parseLogicalOr since we don't have ternary implemented
+    parseLogicalOrStopAt(stopToken)
+  }
+  
+  private def parseLogicalOrStopAt(stopToken: TokenType): ParseResult[Expression] = {
+    val leftResult = parseLogicalAndStopAt(stopToken)
+    if (leftResult.isError()) return leftResult
+    
+    var left = leftResult.result
+    
+    while (!check(stopToken) && (matchToken(TokenType.TOKEN_PIPE_PIPE) || matchToken(TokenType.TOKEN_OR))) {
+      val operator = previous()
+      val rightResult = parseLogicalAndStopAt(stopToken)
+      if (rightResult.isError()) return createParseError(rightResult.error, rightResult.errorMessage)
+      left = BinaryExpression(operator.lexeme, left, rightResult.result, left.location)
+    }
+    
+    ParseResult(left, ERROR_NONE)
+  }
+  
+  private def parseLogicalAndStopAt(stopToken: TokenType): ParseResult[Expression] = {
+    val leftResult = parseEqualityStopAt(stopToken)
+    if (leftResult.isError()) return leftResult
+    
+    var left = leftResult.result
+    
+    while (!check(stopToken) && (matchToken(TokenType.TOKEN_AMP_AMP) || matchToken(TokenType.TOKEN_AND))) {
+      val operator = previous()
+      val rightResult = parseEqualityStopAt(stopToken)
+      if (rightResult.isError()) return createParseError(rightResult.error, rightResult.errorMessage)
+      left = BinaryExpression(operator.lexeme, left, rightResult.result, left.location)
+    }
+    
+    ParseResult(left, ERROR_NONE)
+  }
+  
+  private def parseEqualityStopAt(stopToken: TokenType): ParseResult[Expression] = {
+    val leftResult = parseBinaryExpressionStopAt(6, stopToken)  // Start at comparison precedence
+    if (leftResult.isError()) return leftResult
+    
+    var left = leftResult.result
+    
+    while (!check(stopToken) && (matchToken(TokenType.TOKEN_EQUAL_EQUAL) || matchToken(TokenType.TOKEN_BANG_EQUAL))) {
+      val operator = previous()
+      val rightResult = parseBinaryExpressionStopAt(6, stopToken)
+      if (rightResult.isError()) return createParseError(rightResult.error, rightResult.errorMessage)
+      left = BinaryExpression(operator.lexeme, left, rightResult.result, left.location)
+    }
+    
+    ParseResult(left, ERROR_NONE)
+  }
+  
+  private def parseBinaryExpressionStopAt(minPrec: Int, stopToken: TokenType): ParseResult[Expression] = {
+    val leftResult = parseUnary()
+    if (leftResult.isError()) return leftResult
+    
+    var left = leftResult.result
+    
+    while (!isAtEnd() && !check(stopToken)) {
+      val token = peek()
+      val tokenPrec = precedence.getOrElse(token.lexeme, 0)
+      
+      if (tokenPrec < minPrec) {
+        return ParseResult(left, ERROR_NONE)
+      }
+      
+      val operator = advance()
+      val nextMinPrec = if (rightAssociative.contains(operator.lexeme)) tokenPrec else tokenPrec + 1
+      
+      val rightResult = parseBinaryExpressionStopAt(nextMinPrec, stopToken)
+      if (rightResult.isError()) return createParseError(rightResult.error, rightResult.errorMessage)
+      
+      left = BinaryExpression(operator.lexeme, left, rightResult.result, left.location)
+    }
+    
+    ParseResult(left, ERROR_NONE)
   }
   
   // ===== PATTERN PARSING =====

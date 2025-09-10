@@ -35,6 +35,7 @@ class Lexer(sourceInput: String, fileName: String = "<unknown>") {
     "var" -> TokenType.TOKEN_VAR,
     "val" -> TokenType.TOKEN_VAL,
     "def" -> TokenType.TOKEN_DEF,
+    "let" -> TokenType.TOKEN_LET,
     "if" -> TokenType.TOKEN_IF,
     "then" -> TokenType.TOKEN_THEN,
     "elif" -> TokenType.TOKEN_ELIF,

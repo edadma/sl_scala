@@ -148,6 +148,20 @@ case class AnonymousFunctionExpression(
   location: SourceLocation  
 ) extends Expression
 
+// Let expressions
+case class LetExpression(
+  bindings: ArrayBuffer[LetBinding],
+  body: Expression,
+  hasEndMarker: Boolean,   // true if "end let" present
+  location: SourceLocation
+) extends Expression
+
+case class LetBinding(
+  name: String,
+  value: Expression,
+  location: SourceLocation
+)
+
 // Block expressions (indented blocks that return values)
 case class BlockExpression(
   statements: ArrayBuffer[ASTNode],  // mix of statements and expressions
